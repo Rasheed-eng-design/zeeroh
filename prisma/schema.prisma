@@ -1,0 +1,181 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+enum UserRole {
+  ATTENDEE
+  ORGANIZER
+  ADMIN
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime? @map("email_verified")
+  image          String?
+  password       String?
+  phone          String?   @unique
+  role           UserRole  @default(ATTENDEE)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  accounts      Account[]
+  sessions      Session[]
+  organizedEvents Event[]      @relation("OrganizerEvents")
+  tickets       Ticket[]
+  transactions  Transaction[]
+
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+enum EventStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  date        DateTime
+  endDate     DateTime? @map("end_date")
+  venue       String
+  isVirtual   Boolean  @default(false) @map("is_virtual")
+  bannerUrl   String?  @map("banner_url")
+  category    String
+  status      EventStatus @default(DRAFT)
+  featured    Boolean  @default(false)
+  city        String?
+  state       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organizerId String @map("organizer_id")
+  organizer   User   @relation("OrganizerEvents", fields: [organizerId], references: [id])
+  ticketTypes TicketType[]
+
+  @@index([status])
+  @@index([category])
+  @@index([date])
+  @@map("events")
+}
+
+model TicketType {
+  id          String   @id @default(cuid())
+  name        String
+  price       Decimal  @db.Decimal(10, 2)
+  quantity    Int
+  sold        Int      @default(0)
+  description String?
+  eventId     String   @map("event_id")
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tickets     Ticket[]
+
+  @@map("ticket_types")
+}
+
+enum TicketStatus {
+  VALID
+  USED
+  CANCELLED
+  EXPIRED
+}
+
+model Ticket {
+  id            String       @id @default(cuid())
+  qrCode        String       @unique @map("qr_code")
+  status        TicketStatus @default(VALID)
+  purchasedAt   DateTime     @default(now()) @map("purchased_at")
+  usedAt        DateTime?    @map("used_at")
+
+  ticketTypeId  String       @map("ticket_type_id")
+  ticketType    TicketType   @relation(fields: [ticketTypeId], references: [id])
+  userId        String       @map("user_id")
+  user          User         @relation(fields: [userId], references: [id])
+  transactionId String       @map("transaction_id")
+  transaction   Transaction  @relation(fields: [transactionId], references: [id])
+
+  @@map("tickets")
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+model Transaction {
+  id             String            @id @default(cuid())
+  amount         Decimal           @db.Decimal(10, 2)
+  platformFee    Decimal           @map("platform_fee") @db.Decimal(10, 2)
+  commission     Decimal           @db.Decimal(10, 2)
+  status         TransactionStatus @default(PENDING)
+  paystackRef    String?           @unique @map("paystack_ref")
+  paidAt         DateTime?         @map("paid_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  userId   String   @map("user_id")
+  user     User     @relation(fields: [userId], references: [id])
+  tickets  Ticket[]
+
+  @@index([status])
+  @@map("transactions")
+}
+
+model Settings {
+  id              String   @id @default(cuid())
+  commissionRate  Decimal  @default(0.05) @map("commission_rate") @db.Decimal(5, 4)
+  serviceFee      Decimal  @default(100.00) @map("service_fee") @db.Decimal(10, 2)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
